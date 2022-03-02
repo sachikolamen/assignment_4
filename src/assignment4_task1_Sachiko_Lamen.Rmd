@@ -1,0 +1,100 @@
+---
+title: "Task 1"
+author: "Sachiko Lamen"
+date: "3/1/2022"
+output: html_document
+---
+
+```{r setup, include= TRUE, message = FALSE, warning = FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(here)
+library(broom)
+library(sf) # vector, spatial data 
+library(tmap) # create cool thematic maps easily
+library(janitor)
+library(spatstat)
+library(maptools)
+library(raster)
+library(tidyverse)
+```
+
+```{r}
+# Read in data
+oil_spill_sf <- read_sf(here("data", "oil_spill_shape", "Oil_Spill_Incident_Tracking_[ds394].shp")) %>%
+  select(date = DATEOFINCI, county = LOCALECOUN)
+
+ca_sf <- read_sf(here("data", "ca_counties", "CA_Counties_TIGER2016.shp")) %>%
+  clean_names() %>%
+  select(county_name = name, land_area = aland)
+
+head(oil_spill_sf)
+head(ca_sf)
+
+# View CRS info
+oil_spill_sf %>% st_crs()
+ca_sf %>% st_crs()
+# Looks like they are the same! Yay!
+```
+
+```{r, include = FALSE}
+# Graph to see what the heck this file even looks like
+ggplot() +
+  geom_sf(data = ca_sf) +
+  geom_sf(data = oil_spill_sf) + 
+  theme_void() 
+```
+
+### Wrangle to find oil spill incidents per county
+
+```{r}
+ca_oil_sf <- ca_sf %>%
+  st_join(oil_spill_sf)
+
+head(ca_oil_sf)
+
+oil_counts_sf <- ca_oil_sf %>%
+  group_by(county_name) %>%
+  summarize(n_records = sum(!is.na(county_name))) # count all counties that do not have NA values using the ID column
+
+head(oil_counts_sf)
+```
+
+```{r}
+# Choropleth Map
+ggplot(data = oil_counts_sf) +
+  geom_sf(aes(fill = n_records), color = 'white', size = 0.1) +
+  scale_fill_gradientn(colors = c('lightgrey', 'darkorchid', 'navyblue')) +
+  theme_void() +
+  labs(fill = "Number of Oil Spills",
+       title = "CA Oil Spills Per County 2008")
+
+#### Use `tmap` to make a cool interactive and pretty map
+tmap_mode(mode = 'view')
+tm_shape(oil_counts_sf) +
+  tm_borders(col = 'black') +
+  tm_fill('n_records', palette = 'BuPu') +
+  tm_dots()
+```
+
+### Heat Map
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
