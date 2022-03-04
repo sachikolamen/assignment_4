@@ -1,0 +1,183 @@
+---
+title: "Willamette Falls Fish Passage Time Series Summary"
+author: "Sachiko Lamen"
+date: "3/2/2022"
+output: 
+  html_document:
+    theme: united
+    highlight: tango
+    code_folding: hide
+---
+
+```{r setup, include=FALSE, warning = FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(tidyverse)
+library(here)
+library(png)
+library(broom)
+library(tsibble)
+library(feasts)
+library(fable)
+library(janitor)
+library(lubridate)
+library(patchwork)
+library(scales)
+```
+
+```{r}
+feesh <- png::readPNG(here("data", "fish.png"))
+```
+
+## {.tabset .tabset-fade}
+#### **Overview**
+An engaging image (with caption, incl. photo credit) that is relevant to the dataset
+A brief summary (3 - 4 sentences) of the dataset, and what is included in this report
+A map of the fish ladder location (you can make this in R on your own, or include an existing map appropriately licensed, with attribution)
+A professionally formatted data citation
+
+### Original Time Series
+```{r}
+# Read in and wrangle data
+fish <- read_csv(here("data", "willamette_fish_passage.csv")) %>%
+  clean_names() 
+
+# Steelhead timeseries subset
+steelhead <- fish %>%
+  select(steelhead, date) %>%
+  mutate(date = mdy(date))
+
+steelhead[is.na(steelhead)] = 0
+
+steelhead_ts <- steelhead %>%
+  mutate(date = yearmonth(date)) %>%
+  group_by(date) %>%
+  summarize(total_steelhead = sum(steelhead)) %>%
+  as_tsibble(key = NULL, index = date)
+  
+# Coho timeseries subset
+coho <- fish %>%
+  select(coho, date) %>%
+  mutate(date = mdy(date))
+
+coho[is.na(coho)] = 0
+
+coho_ts <- coho%>%
+  mutate(date = yearmonth(date)) %>%
+  group_by(date) %>%
+  summarize(total_coho = sum(coho)) %>%
+  as_tsibble(key = NULL, index = date)
+
+# Coho Jack timeseries subset
+jack_coho <- fish %>%
+  select(jack_coho, date) %>%
+  mutate(date = mdy(date))
+
+jack_coho[is.na(jack_coho)] = 0
+
+jack_coho_ts <- jack_coho%>%
+  mutate(date = yearmonth(date)) %>%
+  group_by(date) %>%
+  summarize(total_jack_coho = sum(jack_coho)) %>%
+  as_tsibble(key = NULL, index = date)
+
+# Merge all totals together into one timeseries dataframe
+fish_totals_ts <- merge(steelhead_ts, coho_ts, by = "date") %>%
+  merge(jack_coho_ts, by = "date") %>%
+  as_tsibble(key = NULL, index = date)
+```
+
+```{r}
+# Exploratory Plot
+ggplot(data = fish_totals_ts) +
+  geom_line(aes(x = date, y = total_steelhead, color = "Steelhead")) +
+  geom_line(aes(x = date, y = total_coho, color = "Coho")) +
+  geom_line(aes(x = date, y = total_jack_coho, color = "Coho Jack")) +
+  theme_minimal() +
+  labs(y = "Fish Counts", x = "Time",
+       color = "Species")
+```
+
+2 - 3 bullet points summarizing major patterns / notable trends in the salmon passage time series data
+Figure 1 shows apparent seasonality in patterns of fish stock for steelhead, coho, and coho jack species.  
+
+### Seasonplots
+
+```{r}
+
+g1 <- fish_totals_ts %>%
+  gg_season(y = total_steelhead) +
+  labs(y = "Steelhead") +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank()) +
+  theme(axis.title.x = element_blank()) 
+
+g2 <- fish_totals_ts %>%
+  gg_season(y = total_coho) +
+  labs(y = "Coho") +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank()) +
+  theme(axis.title.x = element_blank()) 
+
+g3 <- fish_totals_ts %>%
+  gg_season(total_jack_coho) +
+  theme(axis.title.x = element_blank()) +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank()) +
+  labs(y = "Coho Jack", x = "Month") 
+
+(g1 / g2 / g3) + plot_layout(guides = "collect")
+```
+
+Add 2 - 3 bullet points summarizing the major trends you see in the seasonplots.
+
+### Annual Counts by Species
+
+```{r}
+# Annual steelhead count subset
+annual_steelhead <- merge(steelhead_ts, coho_ts, by = "date") %>%
+  merge(jack_coho_ts, by = "date") %>%
+  mutate(year = year(date)) %>%
+  group_by(year) %>%
+  summarize(annual_steelhead = sum(total_steelhead))
+
+# Annual coho count subset
+annual_coho <- merge(steelhead_ts, coho_ts, by = "date") %>%
+  merge(jack_coho_ts, by = "date") %>%
+  mutate(year = year(date)) %>%
+  group_by(year) %>%
+  summarize(annual_scoho = sum(total_coho))
+
+# Annual coho jack count subset
+annual_jack_coho <- merge(steelhead_ts, coho_ts, by = "date") %>%
+  merge(jack_coho_ts, by = "date") %>%
+  mutate(year = year(date)) %>%
+  group_by(year) %>%
+  summarize(annual_jack_coho = sum(total_jack_coho))
+
+total_annual <- merge(annual_steelhead, annual_coho, by = "year") %>%
+  merge(annual_jack_coho, by = "year")
+```
+
+
+```{r}
+ggplot(data = total_annual) +
+  geom_line(aes(x = year, y = annual_steelhead, color = "Steelhead")) +
+  geom_line(aes(x = year, y = annual_scoho, color = "Coho")) +
+  geom_line(aes(x = year, y = annual_jack_coho, color = "Coho Jack")) +
+  scale_x_continuous(breaks = pretty_breaks(10)) +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank()) + 
+  labs(y = "Total Species Counts", x = "Year",
+       color = "Species") 
+```
+
+
+
+
+
+
+
+
+
+
+
