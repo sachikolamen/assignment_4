@@ -1,0 +1,99 @@
+---
+title: "Text Analysis"
+author: "Sachiko Lamen"
+date: "3/6/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(tidytext)
+library(textdata)
+library(pdftools)
+library(ggwordcloud)
+library(here)
+```
+
+```{r}
+huck_pdf <- pdf_text(here("data", "huckfinn.pdf")) 
+
+huck_clean <- data.frame(huck_pdf) %>%
+  mutate(page = 1:n()) %>% # number pages
+  mutate(full_text = str_split(huck_pdf, pattern = "\\n")) %>%
+  unnest() %>% # tells to take vector of string pieces and create new observation for each string
+  mutate(full_text = str_squish(full_text)) %>%
+  slice(-(1:49))
+```
+
+```{r}
+### Do some tidying
+huck_chapts <- huck_clean %>%
+  mutate(chapter = ifelse(str_detect(full_text, 'Chapter'), full_text, NA)) %>% # see that new column titled chapter is created
+  fill(chapter, .direction = 'down')%>% # fills na values below chapter with chapter values
+  separate(col = chapter, into = c('ch', 'no'), sep = ' ') %>%
+  mutate(chapter = as.numeric(as.roman(no))) # new column that convert numerals to numbers
+```
+
+## Word counts by chapter!
+```{r}
+huck_words <- huck_chapts %>%
+  unnest_tokens(word, full_text, token = 'words') %>% # in tidytext package, make new column titled word 
+  select(-huck_pdf) %>%
+  subset(word !=  "nigger" & word != "niggers") %>%
+  subset(word != "en" & word != "de")
+
+huck_wordcount <- huck_words %>%
+  count(chapter, word)
+```
+
+```{r}
+# Remove stop words
+x <- stop_words
+
+huck_words_clean <- huck_words %>%
+  anti_join(stop_words, by = 'word') 
+
+nonstop_counts <- huck_words_clean %>%
+  count(chapter, word)
+```
+
+```{r}
+top_5_words <- nonstop_counts %>%
+  group_by(chapter) %>%
+  arrange(-n) %>%
+  slice(1:5) %>%
+  ungroup()
+
+ggplot(data = top_5_words) +
+  geom_col(aes(x = n, y = word), fill = 'blue') +
+  facet_wrap(~chapter, scales = 'free')
+
+top100 <- nonstop_counts %>% 
+  arrange(-n) %>%
+  slice(1:100)
+
+cloud <- ggplot(data = top100,
+                aes(label = word)) +
+  geom_text_wordcloud(aes(color = n, size = n, shape = 'diamond')) +
+  scale_size_area(max_size = 6) +
+  scale_color_gradientn(colors = c('purple', 'blue', 'orange'))
+
+cloud
+
+sentiment <- huck_words_clean %>%
+  inner_join(get_sentiments('nrc'))
+
+sentiment_counts <- sentiment %>%
+  count(chapter, sentiment)
+
+ggplot(data = sentiment_counts, aes(x = sentiment, y = n)) +
+  geom_col() +
+  coord_flip()
+```
+
+
+
+
+
+
